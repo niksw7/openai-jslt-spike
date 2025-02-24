@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import openai
 from openai import OpenAI
+import time
 
 client = OpenAI()
 import os
@@ -49,13 +50,12 @@ class MessageModel(BaseModel):
 async def generate_jslt(messageModel: MessageModel):
     """Use OpenAI Assistants API to generate JSLT with memory."""
     thread_id=os.environ.get("JSLT_OPENAI_THREAD_ID","")
-    if thread_id =="":    
+    if thread_id == "":    
+        print("I am creating a new thread with id below")
         thread = openai.beta.threads.create()
         thread_id= thread.id
         print("Creating new Thread ID:", thread_id)
 
-
-    print("messageModel",messageModel.message)
     # Send user message to the assistant
     openai.beta.threads.messages.create(
         thread_id=thread_id,
@@ -66,9 +66,18 @@ async def generate_jslt(messageModel: MessageModel):
         thread_id=thread_id,
         assistant_id=assistant_id
     )
+    # ✅ Polling until the run is completed
+    while True:
+        run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+        print(run_status)
+        if run_status.status == "completed":
+            print("✅ Assistant finished processing!")
+            break
+        
+        time.sleep(1)  # Wait 1 second before checking again
     # Retrieve the assistant’s latest response
     response = openai.beta.threads.messages.list(thread_id=thread_id)
-
+    print("=====",response)
     # Extract assistant's response (latest message with role 'assistant')
     assistant_message = next(
         (msg for msg in reversed(response.data) if msg.role == "assistant"), None
@@ -95,7 +104,7 @@ if __name__ == "__main__":
     if assistant_id == "":
         start_assistant()
     else:
-        print("Skipping Assistant Creation as you are using the default one")
+        print("Skipping Assistant Creation as you are using the default one",assistant_id)
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
